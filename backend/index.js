@@ -8,84 +8,123 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-mongoose.connect("mongodb://127.0.0.1:27017/passkey")
-.then(() => {
+
+
+mongoose
+  .connect("mongodb://127.0.0.1:27017/passkey")
+  .then(() => {
     console.log("MongoDB Connected");
-})
-.catch((err) => {
-    console.log("MongoDB Error", err);
+  })
+  .catch((err) => {
+    console.log("MongoDB Error:", err);
+  });
+
+
+const credentialSchema = new mongoose.Schema({
+  username: String,
+  pass: String,
 });
 
-const credential = mongoose.model("credential", {}, "bulkmail");
+const Credential = mongoose.model(
+  "credential",
+  credentialSchema,
+  "bulkmain"
+);
+
+
 
 app.post("/sendemail", async (req, res) => {
+  try {
 
-    let message = req.body.message;
-    let emailList = req.body.emailList;
+    const { message, emailList } = req.body;
+
+    // validation
+    if (!message || message.trim() === "") {
+      return res.status(400).send("Message is required");
+    }
 
     if (!emailList || emailList.length === 0) {
-        return res.status(400).send("No Email Found");
+      return res.status(400).send("No emails found");
     }
 
-    try {
+    // get gmail credentials from mongodb
+    const data = await Credential.findOne();
 
-        const data = await credential.find();
+    if (!data) {
+      return res
+        .status(400)
+        .send("No Gmail credentials found in DB");
+    }
 
-        if (!data || data.length === 0) {
-            return res.status(400).send("No email credentials found in database");
-        }
+    // transporter
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: data.username,
+        pass: data.pass,
+      },
+    });
 
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                user: data[0].toJSON().username,
-                pass: data[0].toJSON().pass,
-            },
+    let sentCount = 0;
+    let failedCount = 0;
+
+    // email validation regex
+    const validator =
+      /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // send emails
+    for (const email of emailList) {
+
+      // skip invalid email
+      if (!validator.test(email)) {
+        console.log("Invalid Email:", email);
+        failedCount++;
+        continue;
+      }
+
+      try {
+
+        await transporter.sendMail({
+          from: data.username,
+          to: email,
+          subject: "Bulk Mail Message",
+          text: message,
         });
 
-        let sentCount = 0;
-        let errorCount = 0;
+        console.log("Email Sent:", email);
 
-        for (let i = 0; i < emailList.length; i++) {
+        sentCount++;
 
-            try {
+      } catch (err) {
 
-                await transporter.sendMail({
-                    from: data[0].toJSON().username,
-                    to: emailList[i],
-                    subject: "Message from Bulk Mail App",
-                    text: message,
-                });
+        console.log("Send Failed:", email);
+        console.log(err.message);
 
-                console.log("Email Sent to:", emailList[i]);
-                sentCount++;
+        failedCount++;
 
-            } catch (err) {
-
-                console.log(err);
-                errorCount++;
-
-            }
-        }
-
-        console.log("Sent:", sentCount);
-        console.log("Failed:", errorCount);
-
-        if (errorCount === 0) {
-            res.send(true);
-        } else {
-            res.send(false);
-        }
-
-    } catch (err) {
-
-        console.log("Email send error:", err);
-        res.status(500).send("Server error: " + err.message);
-
+      }
     }
 
+    console.log("Total Sent:", sentCount);
+    console.log("Total Failed:", failedCount);
+
+    // response
+    res.status(200).json({
+      success: true,
+      sent: sentCount,
+      failed: failedCount,
+    });
+
+  } catch (err) {
+
+    console.log("Server Error:", err);
+
+    res.status(500).send(err.message);
+  }
 });
 
+
+
 app.listen(5000, () => {
-    console.log("Server running on port 5000");
+  console.log("Server Running on Port 5000");
 });
