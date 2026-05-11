@@ -51,7 +51,7 @@ function App() {
 
       // API Call
       const res = await axios.post(
-        "https://bulk-mail-oo37.vercel.app/sendemail",
+        "https://bulk-mail-4-thva.onrender.com/sendemail",
         {
           message: message,
           emailList: allEmails,
