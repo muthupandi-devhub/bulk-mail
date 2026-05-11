@@ -51,7 +51,7 @@ function App() {
 
       // API Call
       const res = await axios.post(
-        "http://localhost:5000/sendemail",
+        "https://bulk-mail-3-1o21.onrender.com/sendemail",
         {
           message: message,
           emailList: allEmails,
